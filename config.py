@@ -1,12 +1,18 @@
 import os
 from dotenv import load_dotenv
+import streamlit as st
 
 load_dotenv()
 
 # 1. FIXED: Google Sheets Configuration
 GOOGLE_SHEETS_ID = os.getenv("GOOGLE_SHEETS_ID")
-GOOGLE_CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH", "credentials.json")
-
+if hasattr(st, "secrets") and "GOOGLE_SHEETS_ID" in st.secrets:
+    GOOGLE_SHEETS_ID = st.secrets["GOOGLE_SHEETS_ID"]
+    USE_STREAMLIT_SECRETS = True
+else:
+    GOOGLE_SHEETS_ID = os.getenv("GOOGLE_SHEETS_ID")
+    GOOGLE_CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH", "credentials.json")
+    USE_STREAMLIT_SECRETS = False
 # 2. VERIFIED: Sheet Names (Must match your CSV/Tab names exactly)
 SHEET_NAMES = {
     "pilots": "Pilot Roster",
