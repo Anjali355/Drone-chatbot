@@ -1,13 +1,12 @@
 """
-Google Sheets service for reading and writing data.
-Handles both local (credentials.json) and Streamlit Cloud (secrets) authentication.
+Google Sheets service - works on local and Streamlit Cloud
 """
 
 import logging
 from typing import List, Dict, Any, Optional
 import gspread
 from datetime import date, datetime
-import json
+import os
 
 from schemas import Pilot, Drone, Mission, PilotStatus, DroneStatus
 
@@ -15,49 +14,54 @@ logger = logging.getLogger(__name__)
 
 
 class SheetService:
-    """Handles all Google Sheets interactions - works on local and Streamlit Cloud"""
+    """Handles all Google Sheets interactions"""
 
     def __init__(self):
-        """Initialize Google Sheets client - handles both local and cloud deployment"""
+        """Initialize Google Sheets client"""
         try:
             from config import USE_STREAMLIT_SECRETS, GOOGLE_SHEETS_ID, GOOGLE_CREDENTIALS_PATH, SHEET_NAMES
             
-            logger.info("Initializing Google Sheets client...")
+            logger.info("Initializing Google Sheets...")
             
             if USE_STREAMLIT_SECRETS:
-                # Using Streamlit secrets (Cloud deployment)
-                logger.info("Using Streamlit Cloud secrets for authentication...")
-                import streamlit as st
-                from google.oauth2.service_account import Credentials
-                
-                # Get credentials from Streamlit secrets
-                creds_dict = dict(st.secrets["google_credentials"])
-                
-                self.credentials = Credentials.from_service_account_info(
-                    creds_dict,
-                    scopes=["https://www.googleapis.com/auth/spreadsheets"]
-                )
+                # Streamlit Cloud - use secrets
+                logger.info("Loading credentials from Streamlit secrets...")
+                try:
+                    import streamlit as st
+                    from google.oauth2.service_account import Credentials
+                    
+                    creds_dict = dict(st.secrets["google_credentials"])
+                    self.credentials = Credentials.from_service_account_info(
+                        creds_dict,
+                        scopes=["https://www.googleapis.com/auth/spreadsheets"]
+                    )
+                    logger.info("✓ Credentials loaded from Streamlit secrets")
+                except Exception as e:
+                    logger.error(f"Failed to load Streamlit secrets: {e}")
+                    raise
             else:
-                # Using local credentials.json file
-                logger.info("Using local credentials.json file...")
-                from google.oauth2.service_account import Credentials
+                # Local - use credentials.json
+                logger.info("Loading credentials from credentials.json...")
                 
+                if not os.path.exists(GOOGLE_CREDENTIALS_PATH):
+                    raise FileNotFoundError(f"credentials.json not found at {GOOGLE_CREDENTIALS_PATH}")
+                
+                from google.oauth2.service_account import Credentials
                 self.credentials = Credentials.from_service_account_file(
                     GOOGLE_CREDENTIALS_PATH,
                     scopes=["https://www.googleapis.com/auth/spreadsheets"]
                 )
+                logger.info("✓ Credentials loaded from local file")
             
-            # Initialize gspread client (no proxies!)
+            # Authorize gspread (NO PROXIES!)
             self.client = gspread.authorize(self.credentials)
             self.sheet = self.client.open_by_key(GOOGLE_SHEETS_ID)
             self.sheet_names = SHEET_NAMES
             
-            logger.info("✓ Google Sheets client initialized successfully")
+            logger.info("✓ Google Sheets initialized successfully")
             
         except Exception as e:
             logger.error(f"✗ Failed to initialize Google Sheets: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
             raise
 
     def get_worksheet(self, sheet_type: str) -> gspread.Worksheet:
@@ -78,9 +82,7 @@ class SheetService:
         try:
             worksheet = self.get_worksheet(sheet_type)
             records = worksheet.get_all_records()
-            logger.info(f"✓ Fetched {len(records)} raw records from {sheet_type}")
-            if records:
-                logger.debug(f"First record columns: {list(records[0].keys())}")
+            logger.info(f"✓ Fetched {len(records)} records from {sheet_type}")
             return records
         except Exception as e:
             logger.error(f"✗ Error fetching records from {sheet_type}: {e}")
@@ -89,15 +91,13 @@ class SheetService:
     def parse_pilots(self, records: List[Dict[str, Any]]) -> List[Pilot]:
         """Convert raw records to Pilot objects"""
         pilots = []
-        logger.info(f"Starting to parse {len(records)} pilot records")
+        logger.info(f"Parsing {len(records)} pilot records...")
         
         for idx, record in enumerate(records):
             try:
-                # Parse skills and certifications
                 skills = [s.strip() for s in str(record.get("skills", "")).split(",") if s.strip()]
                 certifications = [c.strip() for c in str(record.get("certifications", "")).split(",") if c.strip()]
                 
-                # Map status
                 status_str = record.get("status", "Available").strip()
                 if status_str == "Available":
                     status = PilotStatus.AVAILABLE
@@ -108,11 +108,9 @@ class SheetService:
                 else:
                     status = PilotStatus.UNAVAILABLE
                 
-                # Handle assignment
                 assignment = record.get("current_assignment", "-")
-                current_assignment = None if assignment == "-" or assignment == "" else assignment
+                current_assignment = None if assignment in ["-", ""] else assignment
                 
-                # Convert daily rate to hourly
                 daily_rate = float(record.get("daily_rate_inr", 1500) or 1500)
                 hourly_rate = daily_rate / 8
                 
@@ -131,9 +129,9 @@ class SheetService:
                     phone=record.get("phone")
                 )
                 pilots.append(pilot)
-                logger.info(f"✓ Parsed pilot: {pilot.name}")
+                logger.info(f"✓ Parsed: {pilot.name}")
             except Exception as e:
-                logger.warning(f"⚠️ Skipped pilot record {idx}: {e}")
+                logger.warning(f"⚠️  Skipped record {idx}: {e}")
                 continue
         
         logger.info(f"✓ Successfully parsed {len(pilots)}/{len(records)} pilots")
@@ -142,16 +140,13 @@ class SheetService:
     def parse_drones(self, records: List[Dict[str, Any]]) -> List[Drone]:
         """Convert raw records to Drone objects"""
         drones = []
-        logger.info(f"Starting to parse {len(records)} drone records")
+        logger.info(f"Parsing {len(records)} drone records...")
         
         for idx, record in enumerate(records):
             try:
-                # Parse capabilities
                 capabilities = [c.strip() for c in str(record.get("capabilities", "")).split(",") if c.strip()]
                 
-                # Map status
                 status_str = record.get("status", "Available").strip()
-                
                 if status_str == "Available":
                     status = DroneStatus.AVAILABLE
                 elif status_str == "Maintenance":
@@ -161,12 +156,9 @@ class SheetService:
                 else:
                     status = DroneStatus.GROUNDED
                 
-                # Get weather rating
                 weather_rating = record.get("weather_resistance", "Standard").strip()
-                
-                # Handle assignment
                 assignment = record.get("current_assignment", "-")
-                current_assignment = None if assignment == "-" or assignment == "" else assignment
+                current_assignment = None if assignment in ["-", ""] else assignment
                 
                 drone = Drone(
                     drone_id=record.get("drone_id", "").strip(),
@@ -183,9 +175,9 @@ class SheetService:
                     notes=record.get("notes")
                 )
                 drones.append(drone)
-                logger.info(f"✓ Parsed drone: {drone.drone_id}")
+                logger.info(f"✓ Parsed: {drone.drone_id}")
             except Exception as e:
-                logger.warning(f"⚠️ Skipped drone record {idx}: {e}")
+                logger.warning(f"⚠️  Skipped record {idx}: {e}")
                 continue
         
         logger.info(f"✓ Successfully parsed {len(drones)}/{len(records)} drones")
@@ -194,15 +186,13 @@ class SheetService:
     def parse_missions(self, records: List[Dict[str, Any]]) -> List[Mission]:
         """Convert raw records to Mission objects"""
         missions = []
-        logger.info(f"Starting to parse {len(records)} mission records")
+        logger.info(f"Parsing {len(records)} mission records...")
         
         for idx, record in enumerate(records):
             try:
-                # Parse skills and certifications
                 required_skills = [s.strip() for s in str(record.get("required_skills", "")).split(",") if s.strip()]
                 required_certs = [c.strip() for c in str(record.get("required_certs", "")).split(",") if c.strip()]
                 
-                # Map weather
                 weather_map = {
                     "Rainy": "Rainy",
                     "Sunny": "Clear",
@@ -213,7 +203,6 @@ class SheetService:
                 weather_forecast = record.get("weather_forecast", "Clear").strip()
                 expected_weather = weather_map.get(weather_forecast, weather_forecast)
                 
-                # Get budget
                 budget = float(record.get("mission_budget_inr", 0) or 0)
                 
                 mission = Mission(
@@ -234,60 +223,18 @@ class SheetService:
                     status="Planned"
                 )
                 missions.append(mission)
-                logger.info(f"✓ Parsed mission: {mission.mission_id}")
+                logger.info(f"✓ Parsed: {mission.mission_id}")
             except Exception as e:
-                logger.warning(f"⚠️ Skipped mission record {idx}: {e}")
+                logger.warning(f"⚠️  Skipped record {idx}: {e}")
                 continue
         
         logger.info(f"✓ Successfully parsed {len(missions)}/{len(records)} missions")
         return missions
 
-    def update_pilot_status(self, pilot_name: str, new_status: PilotStatus) -> bool:
-        """Update a pilot's status in the Google Sheet"""
-        try:
-            worksheet = self.get_worksheet("pilots")
-            records = worksheet.get_all_records()
-            
-            for idx, record in enumerate(records, start=2):
-                if record.get("name", "").strip() == pilot_name:
-                    worksheet.update_cell(idx, self._get_column_index(worksheet, "status"), new_status.value)
-                    logger.info(f"✓ Updated pilot '{pilot_name}' status to {new_status.value}")
-                    return True
-            
-            return False
-        except Exception as e:
-            logger.error(f"✗ Error updating pilot status: {e}")
-            return False
-
-    def update_drone_status(self, drone_id: str, new_status: DroneStatus) -> bool:
-        """Update a drone's status in the Google Sheet"""
-        try:
-            worksheet = self.get_worksheet("drones")
-            records = worksheet.get_all_records()
-            
-            for idx, record in enumerate(records, start=2):
-                if record.get("drone_id", "").strip() == drone_id:
-                    worksheet.update_cell(idx, self._get_column_index(worksheet, "status"), new_status.value)
-                    logger.info(f"✓ Updated drone '{drone_id}' status to {new_status.value}")
-                    return True
-            
-            return False
-        except Exception as e:
-            logger.error(f"✗ Error updating drone status: {e}")
-            return False
-
-    def _get_column_index(self, worksheet: gspread.Worksheet, column_name: str) -> int:
-        """Get column index by header name"""
-        headers = worksheet.row_values(1)
-        try:
-            return headers.index(column_name) + 1
-        except ValueError:
-            raise ValueError(f"Column '{column_name}' not found in worksheet")
-
     @staticmethod
     def _parse_date(date_str: Optional[str]) -> Optional[date]:
         """Parse date string to date object"""
-        if not date_str or str(date_str).strip() == "" or str(date_str).strip() == "-":
+        if not date_str or str(date_str).strip() in ["", "-"]:
             return None
         
         try:
@@ -296,7 +243,6 @@ class SheetService:
                     return datetime.strptime(str(date_str).strip(), fmt).date()
                 except ValueError:
                     continue
-            
             return None
         except Exception as e:
             logger.warning(f"Error parsing date '{date_str}': {e}")
@@ -306,7 +252,7 @@ class SheetService:
         """Fetch all data from Google Sheets"""
         try:
             logger.info("=" * 60)
-            logger.info("Starting data sync...")
+            logger.info("Syncing data from Google Sheets...")
             logger.info("=" * 60)
             
             pilots = self.parse_pilots(self.get_all_records("pilots"))
