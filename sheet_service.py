@@ -28,19 +28,28 @@ class SheetService:
         try:
             logger.info("Initializing Google Sheets client...")
             
-            # Create credentials without any proxies argument
-            # if "google_credentials" in st.secrets:
-                # Running on Streamlit Cloud
-            self.credentials = Credentials.from_service_account_info(
-                    st.secrets["google_credentials"],
+            # Check if secrets are available (Cloud Hosting)
+            if "google_credentials" in st.secrets:
+                self.credentials = Credentials.from_service_account_info(
+                    dict(st.secrets["google_credentials"]),
                     scopes=["https://www.googleapis.com/auth/spreadsheets"]
                 )
-            # else:
-            #     # Running locally
-            #     self.credentials = Credentials.from_service_account_file(
-            #         GOOGLE_CREDENTIALS_PATH,
-            #         scopes=["https://www.googleapis.com/auth/spreadsheets"]
-            #     )
+                logger.info("✓ Authenticated using Streamlit Secrets")
+            
+            # Fallback for local development (if file exists)
+            else:
+                self.credentials = Credentials.from_service_account_file(
+                    "credentials.json",
+                    scopes=["https://www.googleapis.com/auth/spreadsheets"]
+                )
+                logger.info("✓ Authenticated using local credentials.json")
+                
+            self.gc = gspread.authorize(self.credentials)
+            
+        except Exception as e:
+            logger.error(f"✗ Failed to initialize Sheets: {e}")
+            # Re-raise so the main app knows initialization failed
+            raise e
 
             logger.info("✓ Credentials loaded")
             
