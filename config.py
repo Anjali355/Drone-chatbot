@@ -5,7 +5,6 @@ import streamlit as st
 load_dotenv()
 
 # 1. FIXED: Google Sheets Configuration
-GOOGLE_SHEETS_ID = os.getenv("GOOGLE_SHEETS_ID")
 if hasattr(st, "secrets") and "google_credentials" in st.secrets:
     GOOGLE_SHEETS_ID = st.secrets.get("GOOGLE_SHEETS_ID", os.getenv("GOOGLE_SHEETS_ID"))
     GOOGLE_CREDENTIALS_PATH = None  # Explicitly set to None so code doesn't look for a file
