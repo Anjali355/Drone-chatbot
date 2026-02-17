@@ -1,0 +1,21 @@
+# Virtual environment
+venv/
+.env/
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Environment variables
+.env
+
+# Google credentials
+credentials.json
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
