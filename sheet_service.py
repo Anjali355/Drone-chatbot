@@ -14,7 +14,7 @@ import streamlit as st
 from google.oauth2.service_account import Credentials
 import os
 
-from config import GOOGLE_SHEETS_ID, GOOGLE_CREDENTIALS_PATH, SHEET_NAMES
+from config import GOOGLE_SHEETS_ID, SHEET_NAMES
 from schemas import Pilot, Drone, Mission, PilotStatus, DroneStatus
 
 logger = logging.getLogger(__name__)
@@ -29,18 +29,18 @@ class SheetService:
             logger.info("Initializing Google Sheets client...")
             
             # Create credentials without any proxies argument
-            if "google_credentials" in st.secrets:
+            # if "google_credentials" in st.secrets:
                 # Running on Streamlit Cloud
-                self.credentials = Credentials.from_service_account_info(
+            self.credentials = Credentials.from_service_account_info(
                     st.secrets["google_credentials"],
                     scopes=["https://www.googleapis.com/auth/spreadsheets"]
                 )
-            else:
-                # Running locally
-                self.credentials = Credentials.from_service_account_file(
-                    GOOGLE_CREDENTIALS_PATH,
-                    scopes=["https://www.googleapis.com/auth/spreadsheets"]
-                )
+            # else:
+            #     # Running locally
+            #     self.credentials = Credentials.from_service_account_file(
+            #         GOOGLE_CREDENTIALS_PATH,
+            #         scopes=["https://www.googleapis.com/auth/spreadsheets"]
+            #     )
 
             logger.info("✓ Credentials loaded")
             
